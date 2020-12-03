@@ -1,0 +1,294 @@
+---
+title: "p8130 HW6"
+author: JingYao Geng
+date: '`r format(Sys.time(), "%Y-%m-%d")`'
+output: 
+  pdf_document:
+    latex_engine: "xelatex"
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(arsenal)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%",
+  message = FALSE,
+  warning = FALSE,
+  collapse = FALSE,
+  echo = F
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_color_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+
+## Problem 1
+
+```{r import, include = FALSE}
+hospital_df = read_csv("./data/PatSatisfaction.csv") %>%
+  janitor::clean_names()
+```
+
+**1.1 Correlation matrix for all variables:**
+```{r 1.1}
+cor(hospital_df) %>% round(3) %>% knitr::kable()
+```
+
+* Based on the correlation matrix for all variables above, we find that patients' satifaction score `safisfaction` are negative correlated with the three potential predictors: `age`, `severity of illness` and `anxiety level`. A `negative correlation` is a relationship between two variables in which an increase in one variable is associated with a decrease in the other. Moreover, there is a positive correlation between each pair of the predictors. All values are symmetric about the diagonal line, this is true because corr(X,Y)=corr(Y,X). All values in the diagonal are 1, this is true because corr(X, X) = 1.
+
+
+**1.2 Multiple Regression Model:**
+
+$$Satisfaction_i = \beta_0+\beta_{age}Age+\beta_{severity}Severity+\beta_{anxiety}Anxiety+\varepsilon_i$$
+
+```{r 1.2}
+hos_lm = lm(safisfaction ~ age + severity + anxiety, data = hospital_df)
+summary(hos_lm) 
+```
+
+```{r, include=FALSE}
+anova(hos_lm)
+n = nrow(hospital_df) #46
+p = 3
+qf(0.95, p, n - p - 1) #2.827049
+```
+
+
+
+**Hypothesis:**
+
+$H_0: \beta_{age} = \beta_{severity} = \beta_{anxiety} = 0$
+$H_1: at~least~one~\beta~is~not~0.$
+
+**Test Statistics:**
+$F = \frac{MSR}{MSE} = \frac{SSR/p}{SSE/(n-p-1)} = \frac{SSR/3}{SSE/42} = 30.05\sim F_{3,42}~under~null$
+
+**Test Critical**
+
+$F_{~1-\alpha,~p,~n-p-1} = F_{~0.95,~3,~42} = `r  qf(0.95, 3, 42)`$
+
+**Decision Rule:**
+$Reject~H_0: F >FF_{~0.95;~3,~42}$
+$Fail~to~Reject~H_0: F  \leq F_{~0.95,~3,~42}$
+
+**Conclusion:**
+Based on both summary table above, we find: $F = 30.05>F_{~1-0.05;~3,~42} =2.827049$, and we reject $H_0$ and conclude that at least one slope/coefficient is not zero.
+
+
+**1.3 95% C.I.**
+```{r 1.3}
+confint(hos_lm,level = 0.95) %>% knitr::kable()
+```
+
+* We are 95% confident that for every one unit increase of severity of illness, the estimated patient's satisfaction scores on average would change between -1.4348 and 0.5508.
+
+
+**1.4 Interval estimate for a new patient's satisfaction with `age=35`, `severity=42`, `anxiety=2.1`**
+```{r 1.4}
+predict(hos_lm, data.frame(age = 35, severity = 42, anxiety = 2.1), 
+        interval = "confidence", level = 0.95) %>% knitr::kable()
+```
+
+* We are 95% that the estimated mean patients' satisfaction score for a new patient with age = 35, severity = 42, and anxiety = 2.1 is between 64.23592 and 79.13071.
+
+
+**1.5 Test whether `anxiety level` can be dropped from the regression model, given the other two covariates are retained:**
+```{r 1.5}
+small_lm = lm(safisfaction ~ age + severity, data = hospital_df)
+large_lm = hos_lm
+anova(small_lm, large_lm) %>% knitr::kable() # F = 3.5997, p-value = 0.06468 
+
+```
+
+
+```{r include=FALSE}
+summary(small_lm) # F = 40.81, p-value: 1.16e-10 , Adjusted R^2 = 0.6389
+summary(large_lm) # F = 30.05, p-value: 1.542e-10, Adjusted R^2 = 0.6595 
+```
+
+**We use `Partial F-test` for nested models:**
+
+Small Model: $Satisfaction_i = \beta_0+\beta_{age}Age+\beta_{severity}Severity+\varepsilon_i$
+
+Large Model: $Satisfaction_i = \beta_0+\beta_{age}Age+\beta_{severity}Severity+\beta_{anxiety}Anxiety+\varepsilon_i$
+
+$H_0: small~model$
+$H_1: large~model$
+
+**test statistics:**
+
+$F = \frac{(SSE_S-SSE_L)/(df_S-f_L)}{SSE_L/df_L} \sim F_{df_l-df_s, df_l}$, where $df_s = n-p_s-1, df_l = n-p_l-1$ 
+
+Small: $Y_i = \beta_0 + \beta_{anxiety}+ \varepsilon_i$
+large: $Y_i = \beta_0 + \beta_{age}+\beta_{severity}+\beta_{anxiety}+ \varepsilon_i$
+
+**We are testing that:**
+
+$H_0: \beta_{anxiety} = 0$
+$H_1: \beta_{anxiety} \neq 0$
+
+**Conclusion:**
+
+* F = 3.5997, p-value = 0.06468 > $\alpha = 0.05$, we fail to reject $H_0$ and conclude that the larger model is not superior. And we conclude that the model with predictors 'age', 'severity', 'anxiety' is actually not providing more information than the model that only containing 'age' and 'severity'. Therefore, based on alpha = 0.05, we think it's better to DROP `anxiety`, given the other two variables retained.
+
+* When we take a look at the $R^2$ and adjusted $R^2$ for both models. We find that large model (same as part a) has a $R^2$ of 0.6822 and a adjusted $R^2$ of 0.6595. The small model (without 'anxiety') has a $R^2$ of 0.655 and a adjusted $R^2$ of 0.6389.  Both $R^2$ and adjusted $R^2$ are slightly bigger in the large model, however the increases are not meaningful (not >5%). Therefore, we would agree with the previous conclusion and conclude it's better to **DROP** the variable `anxiety`.
+
+
+## Problem 2
+
+```{r include = FALSE}
+obs_df = read_csv("./data/ESTRADL.csv") %>%
+  janitor::clean_names()
+#str(obs_df)
+#n = nrow(obs_df) #210
+```
+
+**2.1 Is there a crude association between BMI and serum estradiol?**
+
+2.1.(a) Scatter plot:
+```{r 2.1.a}
+obs_df %>%
+  ggplot(aes(x = bmi, y = estradl)) +
+  geom_point() +
+  theme_bw(base_size = 20) +
+  geom_smooth(method = 'lm', se = TRUE, color = 'red') +
+  labs(x = "BMI", y = "Serum Levels")
+```
+
+* Based on the scatter plot above, we find there is not a strong positive or negative association between bmi and serum estradiol. The fitted regression line is slightly decreasing, but it's quite parallel to the x-axis. Also, there are 2 potential outliers in the plot.
+
+2.1.(b)
+```{r 2.1.b}
+bmi_lm = lm(estradl ~ bmi, data = obs_df)
+summary(bmi_lm)
+```
+
+$Y_i= \beta_0 +\beta_1BMI + \varepsilon_i$
+
+* Based on the summary regression output, we find a weak negative (-0.4529) association between bmi and serum estradiol. For one unit increase in bmi, the estimated estradl level will decrease by 0.4529 unit on average. However, the p-value of 0.21 is high compared with $\alpha$ = 0.05. This might cause us to conclude that bmi is not a significant predictor of the estradiol hormonal serum levels. And both $R^2$  and adjusted $R^2$ are really small. It indicates that this model does not fit well.
+
+**2.2 How does the relationship between BMI and serum serum estradiol change after controlling for all the other risk factors listed above?**
+
+```{r 2.2 }
+new_bmi_lm = lm(estradl ~ bmi + ethnic + entage + numchild + agemenar, data = obs_df)
+summary(new_bmi_lm)
+```
+
+* After adjusting for other variables, we still observe a negative correlation between bmi and estradl but weaker. And we conclude that for one unit increase in bmi level, the estimated serum estradiol will decrease by 0.1066 on average, adjusting/ controlling for 'ethnic', 'entage', 'numchild', and 'agemenar'. At significance level of 0.05, we conclude that bmi is not significant predictor for serum estradiol.
+* ethnic is negative correlated with serum estradiol. However, at significance level of 0.05, a p-value of 0.000386 indicates that ethnic is a significant predictor for serum estradiol.
+* entage is positive correlated with serum estradiol. However, at significance level of 0.05, a p-value of 0.150259 indicates that entage is not a significant predictor for serum estradiol. 
+* numchild is negative correlated with serum estradiol. However, at significance level of 0.05, a p-value of 0.693788 indicates that numchild is not a significant predictor for serum estradiol. 
+* agemenar is positive correlated with serum estradiol. However, at significance level of 0.05, a p-value of 0.526429 indicates that agemenar is not a significant predictor for serum estradiol. 
+
+
+
+**2.3 Is there any evidence that these relationships vary for African American and Caucasian women?**
+
+Scatter Plot:
+```{r 2.3.a}
+qplot(x = bmi, y = estradl, data = obs_df, color = factor(ethnic)) +
+     geom_smooth(method = "lm", se=FALSE) +
+     labs(x = "bmi level", y = "serum estradl level")
+```
+
+* Based on the scatter plot, we find for African American women (ethnic = 0), the bmi level is negative related to the serum estradl level; but for Caucasian women (ethnic = 1), the bmi level is slightly positive related to the serum estradl level. Therefore, we conclude that there is some evidence that the relationship between 'bmi' level and 'serum estradl' level varied by 'ethnic'. There are some sort of interactions. 
+
+
+Numerical summary:
+```{r 2.3.a.}
+a = obs_df %>% mutate(ethnic = factor(ethnic)) %>% filter(ethnic == "1")
+b = obs_df %>% mutate(ethnic = factor(ethnic)) %>% filter(ethnic == "0")
+```
+
+- African American Women:
+```{r}
+summary(lm(estradl ~ bmi, data = a))
+```
+
+- Caucasian Women:
+```{r}
+summary(lm(estradl ~ bmi, data = b))
+```
+
+
+* We stratify the dataset by 'ethnic', and fit a regression model with the same predictor 'bmi' and response 'estradl'. We find the coefficients are different. For model with African American women, the summary shows a positive slope of 0.3327 and p-value of 0.184. For Caucasian women, the summary shows a negative slope of -2.235 and p-value of 0.14702. This further strengthens the findings we observed from the plot. 
+
+```{r include=FALSE}
+c = obs_df  %>%  mutate(ethnic = factor(ethnic, labels=c("Caucasian","African American")))
+my_controls <- tableby.control(
+               total = F, 
+               test=F,  
+               numeric.stats = c("meansd", "medianq1q3", "range"), 
+               cat.stats = c("countpct", "Nmiss2"), 
+               stats.labels = list(
+               meansd = "Mean (SD)",
+               medianq1q3 = "Median (Q1, Q3)",
+               range = "Min - Max",
+               countpct = "N (%)"))
+
+tab = tableby( ethnic ~ estradl + bmi , data= c, control = my_controls)
+
+# DEscriptive Statistics:
+summary(tab, title = "Descriptive Statistics", labelTranslations = c, text = T) %>% knitr::kable()
+```
+
+
+
+**Based on your findings in 2.3.a , take additional steps to quantify the relationship between BMI and serum estradl by ethnicity. **
+
+without ethnic:
+```{r}
+summary(lm(estradl ~ bmi, data = obs_df))
+```
+
+with ethnic:
+```{r}
+summary(lm(estradl ~ bmi + ethnic , data = obs_df))
+```
+
+* We think `ethnic` might be a potential confounder. Then we fit 2 regression models for `bmi` and `estradl`: one contains `ethnic` and the other doesn't contain `ethnic`. We examine the coefficient of `bmi` for both models, and we find there is a bid difference in magnitude (from -0.4529 to -0.04115). Therefore, we conclude: `ethnic` is confounding the relationship between bmi and estradl. 
+
+Moreover: Interaction
+
+```{r int}
+int = lm(estradl ~ bmi * ethnic, data = obs_df)
+
+int %>% 
+  broom::tidy() %>% 
+  knitr::kable()
+```
+
+
+* We take look at the interaction term, and we find a significant p-value of 0.013 (compared to 0.05) of the for `bmi:ethnicCaucasian`. This might indicate that including `ethic` the out model is somehow necessary.
+
+```{r int_model}
+
+int2 = obs_df %>%
+  nest(-ethnic) %>%
+  mutate(
+    model = map(.x = data,
+                ~ lm(estradl ~ bmi, data = .x)),
+    result1 = map(model, broom::tidy),
+    result2 = map(model, broom::confint_tidy)
+  ) %>%
+  select(-model, -data) %>%
+  unnest() %>%
+  janitor::clean_names() %>%
+  select(ethnic:estimate, p_value:conf_high) 
+
+int2 %>% knitr::kable()
+
+```
+
+* We find that for Caucasian group, the mean of change in estradol per unit bmi is -2.235 with a p-value of 0.147, and for African American group, the mean of change in estradol per unit bmi is 0.333 with a p-value of 0.184. 
